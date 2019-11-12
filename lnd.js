@@ -12,11 +12,48 @@ module.exports.init=function(){
         callback(null, metadata);
     });
     var creds = grpc.credentials.combineChannelCredentials(sslCreds, macaroonCreds);
-    var lightning = new lnrpc.Lightning('35.192.104.101:10009', creds);
+    var lightning = new lnrpc.Lightning('34.67.253.46:10009', creds);
     /*var request = {} 
     lightning.getInfo(request, function(err, response) {
         console.log(err)
         console.log(response);
     })*/
     return lightning
+}
+module.exports.addInvoice=function(lightning,memo,fallbackAddr,value,callback){
+    console.log("creating invoice----------")
+    var request = {
+        memo:memo,
+        value:value,
+        fallback_addr:fallbackAddr,
+
+    }
+    lightning.addInvoice(request, function(err, response) {
+        if(err){
+            console.log(err)
+        }
+        console.log(response);
+        callback(response)
+    })
+}
+
+module.exports.listenInvoice= function(gmail,lightning,db,optionD){
+    var localDB = require("./db.js")
+    var request = { 
+		settle_index: 1, 
+	} 
+    var call = lightning.subscribeInvoices(request)
+    console.log("listening invoce:")
+	call.on('data', function(response) {
+		// A response was received from the server.
+        //console.log(response);
+        localDB.handlePayment(gmail,db,response.payment_request,"",response.r_preimage,response.amt_paid,optionD)
+        
+	});
+	call.on('status', function(status) {
+		// The current status of the stream.
+	});
+	call.on('end', function() {
+		// The server has closed the stream.
+	});
 }

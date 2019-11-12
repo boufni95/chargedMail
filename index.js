@@ -48,7 +48,7 @@ function listLabels(gmail,db,latestHistory,optionD) {
 						optionD.unpaidID = label.id
 					}
 					if(label.name == "Paid"){
-						optionD.unpaidID = label.id
+						optionD.paidID = label.id
 					}
 				});
 			} else {
@@ -83,100 +83,106 @@ function listen(gmail,db,latestHistory,optionD){
 	let messageCount = 0;
 	var lastHystoryId = latestHistory;
 	const messageHandler = message => {
-		//console.log(message);
-	console.log(`Received message ${message.id}:`);
-	console.log(`\tData: ${message.data}`);
-	console.log(`\tAttributes: ${message.attributes}`);
-	var dataOBJ = JSON.parse(message.data)
-	var localEmail = dataOBJ.emailAddress
-	var historyId = dataOBJ.historyId
-	console.log(`\hID: ${historyId}`);
-	gmail.users.history.list({
-		userId:"me",
-		
-			startHistoryId:lastHystoryId == 0 ? historyId : lastHystoryId,
+			//console.log(message);
+		console.log(`Received message ${message.id}:`);
+		console.log(`\tData: ${message.data}`);
+		console.log(`\tAttributes: ${message.attributes}`);
+		var dataOBJ = JSON.parse(message.data)
+		var localEmail = dataOBJ.emailAddress
+		var historyId = dataOBJ.historyId
+		console.log(`\hID: ${historyId}`);
+		gmail.users.history.list({
+			userId:"me",
+			
+				startHistoryId:lastHystoryId == 0 ? historyId : lastHystoryId,
 
-		
-	}).then(res =>{
-		console.log(res.data)
-		//TODO:ERROR res.data.historyId
-		lastHystoryId = res.data.historyId;
-		if(res.data.history){
-			res.data.history.forEach(element => {
-				console.log("entering ")
-				if(element.messages){
-					console.log("mexs: ")
-					element.messages.forEach(el =>{
-						console.log(el)
-						if(el.id){
-							var messageId = el.id
-							var threadId = el.threadId
-							//if in the history list there is a message id, get the message
-							//It is not needed to read the message, we just need the id to reply to it
-							gmail.users.messages.get({
-								userId:"me",
-								id:el.id
-							}).then(resMex => {
-								//console.log(resMex.data)
-								
-								if(resMex.data.labelIds.includes(optionD.unpaidID)){
-									console.log("Found Unpaid")
-									if(resMex.data.payload){
-										if(resMex.data.payload.headers){
-											var from
-											var to
-											var subject
-											resMex.data.payload.headers.forEach(head => {
-												//console.log(head)
-												if(head.name=="From"){
-													console.log("From: "+head.value)
-													from=head.value
+			
+		}).then(res =>{
+			console.log(res.data)
+			//TODO:ERROR res.data.historyId
+			lastHystoryId = res.data.historyId;
+			if(res.data.history){
+				res.data.history.forEach(element => {
+					console.log("entering ")
+					if(element.messages){
+						console.log("mexs: ")
+						element.messages.forEach(el =>{
+							//console.log(el)
+							if(el.id){
+								var messageId = el.id
+								var threadId = el.threadId
+								//if in the history list there is a message id, get the message
+								//It is not needed to read the message, we just need the id to reply to it
+								gmail.users.messages.get({
+									userId:"me",
+									id:el.id
+								}).then(resMex => {
+									//console.log(resMex.data)
+									
+									if(resMex.data.labelIds.includes(optionD.unpaidID)){
+										console.log("Found Unpaid")
+										if(resMex.data.payload){
+											if(resMex.data.payload.headers){
+												var from
+												var to
+												var subject
+												resMex.data.payload.headers.forEach(head => {
+													//console.log(head)
+													if(head.name=="From"){
+														console.log("From: "+head.value)
+														from=head.value
+													}
+													if(head.name=="To"){
+														console.log("To: "+head.value)
+														to=head.value
+													}
+													if(head.name=="Subject"){
+														console.log("Subject: "+head.value)
+														subject=head.value
+													}
+												})
+												console.log(localEmail)
+												if(to.includes(localEmail)){
+													localDB.addMail(gmail,lightning,db,to,from,subject,messageId,threadId)
+												} else {
+													console.log("invalid receiver")
 												}
-												if(head.name=="To"){
-													console.log("To: "+head.value)
-													to=head.value
-												}
-												if(head.name=="Subject"){
-													console.log("Subject: "+head.value)
-													subject=head.value
-												}
-											})
-											console.log(localEmail)
-											if(to.includes(localEmail)){
-												localDB.addMail(lightning,db,to,from,subject,messageId,threadId)
-											} else {
-												console.log("invalid receiver")
+											}
+											if(resMex.data.payload.parts){
+												resMex.data.payload.parts.forEach(part=>{
+													//console.log(part)
+												})
+
 											}
 										}
-										/*if(resMex.data.payload.body){
-											console.log(resMex.data.payload.body)
-										}*/
 									}
-								}
-								
-							})
-						}
-					})
-				}
-				if(element.messagesAdded){
-					console.log("mexs added: ")
-					element.messagesAdded.forEach(el =>{
-						console.log(el)
-						
-					})
-				}
-			});
-		}
-	})
-	
-	messageCount += 1;
+									
+								})
+							}
+						})
+					}
+					if(element.messagesAdded){
+						console.log("mexs added: ")
+						element.messagesAdded.forEach(el =>{
+							//console.log(el)
+							
+						})
+					}
+				});
+			}
+		})
+		
+		messageCount += 1;
 
-	// "Ack" (acknowledge receipt of) the message
-	message.ack();
+		// "Ack" (acknowledge receipt of) the message
+		message.ack();
 	};
 
 	// Listen for new messages until timeout is hit
 	subscription.on(`message`, messageHandler);
+
+	localLND.listenInvoice(gmail,lightning,db,optionD)
+	console.log("mhhh")
 
 	setTimeout(() => {
 	subscription.removeListener('message', messageHandler);

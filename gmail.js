@@ -1,10 +1,9 @@
 module.exports.initGmail = function(callback){
     const fs = require('fs');
-    const readline = require('readline');
+    
     const {google} = require('googleapis');
     
-    // If modifying these scopes, delete token.json.
-    const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+
     // The file token.json stores the user's access and refresh tokens, and is
     // created automatically when the authorization flow completes for the first
     // time.
@@ -48,26 +47,83 @@ module.exports.initGmail = function(callback){
  * @param {getEventsCallback} callback The callback for the authorized client.
  */
 function getNewToken(oAuth2Client, callback) {
+	    // If modifying these scopes, delete token.json.
+	const SCOPES = ['https://mail.google.com/',
+		'https://www.googleapis.com/auth/gmail.modify',
+		'https://www.googleapis.com/auth/gmail.modify',
+		'https://www.googleapis.com/auth/gmail.send'];
     const authUrl = oAuth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: SCOPES,
+		access_type: 'offline',
+		scope: SCOPES,
     });
-    console.log('Authorize this app by visiting this url:', authUrl);
+	console.log('Authorize this app by visiting this url:', authUrl);
+	const readline = require('readline');
     const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
+		input: process.stdin,
+		output: process.stdout,
     });
     rl.question('Enter the code from that page here: ', (code) => {
-      rl.close();
-      oAuth2Client.getToken(code, (err, token) => {
-        if (err) return console.error('Error retrieving access token', err);
-        oAuth2Client.setCredentials(token);
-        // Store the token to disk for later program executions
-        fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
-          if (err) return console.error(err);
-          console.log('Token stored to', TOKEN_PATH);
-        });
-        callback(oAuth2Client);
-      });
+		rl.close();
+		oAuth2Client.getToken(code, (err, token) => {
+			if (err) return console.error('Error retrieving access token', err);
+			oAuth2Client.setCredentials(token);
+			const fs = require('fs');
+			const TOKEN_PATH = 'private/token.json';
+			// Store the token to disk for later program executions
+			fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
+				if (err) return console.error(err);
+				console.log('Token stored to', TOKEN_PATH);
+			});
+			callback(oAuth2Client);
+		});
     });
+}
+
+module.exports.sendEmail = function(gmail,from,to,messageId,threadId,subject,data){
+	//console.log(to)
+	//console.log(gmail)
+	/*var email = {
+		mimeType: 'text/plain',
+		filename: '',
+		headers:[
+			{ name: 'MIME-Version', value: '1.0' },
+			{ name: 'Subject', value: subject },
+			{ name: 'To', value: to },
+			{ name: 'From', value:from },
+			{ name: 'Content-Type', value: 'text/plain; charset="UTF-8"' },
+			{ name: 'In-Reply-To', value: messageId },
+		],
+		body:{size:data.length,data:data}
+	}*/
+	var email = "Content-Type: text/plain; charset=\"UTF-8\"\n" +
+	"MIME-Version: 1.0\n" +
+	"Content-Transfer-Encoding: 7bit\n" +
+	//"References: <CADsZLRxZDUGn4Frx80qe2_bE5H5bQhgcqGk=GwFN9gs7Z_8oZw@mail.gmail.com> <CADsZLRyzVPLRQuTthGSHKMCXL7Ora1jNW7h0jvoNgR+hU59BYg@mail.gmail.com> <CADsZLRwQWzLB-uq4_4G2E64NX9G6grn0cEeO0L=avY7ajzuAFg@mail.gmail.com>\n" +
+	"In-Reply-To: "+messageId+"\n" +
+	"Subject: "+subject+"\n" +
+	"From: "+from+"\n" +
+	"To: "+to+"\n\n" +
+	data
+	var Base64 = require('js-base64').Base64
+	var base64EncodedEmail = Base64.encodeURI(email);
+	gmail.users.messages.send({
+		userId:"me",
+		uploadType:"multipart",
+		requestBody:{
+			threadId:threadId,
+			raw:base64EncodedEmail
+		}
+	}).then(res=>{
+		//handle res?
+	})
+}
+module.exports.SetAsPaid = function (gmail,messageId,optionD, callback) {
+	gmail.users.messages.modify({
+		'userId': "me",
+		'id': messageId,
+		requestBody:{
+			'addLabelIds': [optionD.paidID],
+			'removeLabelIds': [optionD.unpaidID]
+	  }
+	}).then(res=>{callback(res)});
   }
