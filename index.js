@@ -1,212 +1,212 @@
-const {google} = require('googleapis');
-const fs = require('fs');
-var projectInfoRAW = fs.readFileSync("private/projectInfo.json");
-var projectInfo = JSON.parse(projectInfoRAW)
-console.log(projectInfo)
-var localLND = require("./lnd.js")
-var lightning = localLND.init()
-var localDB = require("./db.js")
-localDB.initDB(db =>{
-	startGmailD(db)
-})
-var optionD = {}
+var localGmail = require("./gmail.js")
+/*localGmail.initGmail((url,auth)=>{
+    const gmail = google.gmail({version: 'v1', auth});
+    
+    //listen(gmail,db,latestHistory)
+})*/
 
-function startGmailD(db){
-	var localGmail = require("./gmail.js")
-	localGmail.initGmail(auth=>{
-		const gmail = google.gmail({version: 'v1', auth});
-		gmail.users.getProfile({userId:"me"},(err,res) =>{
-			if(err){
-				console.log(err)
-			} else {
-				if(res.data.historyId){
-					console.log(res.data.historyId)
-					listLabels(gmail,db,res.data.historyId,optionD)
-				}
-			}
-		})
-		//listen(gmail,db,latestHistory)
-})
-}
-/**
- * Lists the labels in the user's account.
- *
- * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
- */
-function listLabels(gmail,db,latestHistory,optionD) {
-	gmail.users.labels.list({
-		userId: 'me',
-		}, (err, res) => {
-			if (err) return console.log('The API returned an error: ' + err);
-			const labels = res.data.labels;
-			if (labels.length) {
-				console.log('Labels:');
-				labels.forEach((label) => {
-					console.log(`- ${label.name}`);
-					console.log(`- ${label.id}`);
-					if(label.name == "Unpaid"){
-						optionD.unpaidID = label.id
-					}
-					if(label.name == "Paid"){
-						optionD.paidID = label.id
-					}
-				});
-			} else {
-				console.log('No labels found.');
-			}
-			listen(gmail,db,latestHistory,optionD)
-		});
-		//watchGmail(gmail);
-		
-	}
+var http = require('http');
+var fs = require('fs');
+var path = require('path');
+//var qs = require('querystring');
+var indexFile
+var otherFile
+/*fs.readFile('./public/index.html', function (err, html) {
+    if (err) {
+        throw err; 
+    }       
+    http.createServer(function(request, response) {  
+        response.writeHeader(200, {"Content-Type": "text/html"});  
+        res.write(req.url);
+        response.write(html);  
+        response.end();  
+    }).listen(8000);
+});*/
+http.createServer(function (request, response) {
+    console.log('request starting...');
 
-function listen(gmail,db,latestHistory,optionD){
-	// Imports the Google Cloud client library
-	const {PubSub} = require('@google-cloud/pubsub');
+    var filePath = './public' + request.url;
+    if (filePath == './public/')
+        filePath = './public/index.html';
 
-	// Creates a client
-	const pubsub = new PubSub({
-		projectId: projectInfo.projectId,
-		keyFilename: 'private/credsPubSub.json'
-	});
+    var extname = path.extname(filePath);
+    var isCommand = false
+    var contentType = 'text/html';
+    switch (extname) {
+        case '.js':
+            contentType = 'text/javascript';
+            break;
+        case '.css':
+            contentType = 'text/css';
+            break;
+        case '.json':
+            contentType = 'application/json';
+            break;
+        case '.png':
+            contentType = 'image/png';
+            break;      
+        case '.jpg':
+            contentType = 'image/jpg';
+            break;
+        case '.wav':
+            contentType = 'audio/wav';
+            break;
+            case '':
+                console.log("prolly a command")
+                isCommand = true
+                handleCommand(request,response)
+    }
+    if(!isCommand){
+        console.log("reading: "+filePath)
+        fs.readFile(filePath, function(error, content) {
+            if (error) {
+                console.log(error)
+                if(error.code == 'ENOENT'){
+                    fs.readFile('./public//404.html', function(error, content) {
+                        response.writeHead(200, { 'Content-Type': contentType });
+                        response.end(content, 'utf-8');
+                    });
+                }
+                else {
+                    response.writeHead(500);
+                    response.end('Sorry, check with the site admin for error: '+error.code+' ..\n');
+                    response.end(); 
+                }
+            }
+            else {
+                response.writeHead(200, { 'Content-Type': contentType });
+                response.end(content, 'utf-8');
+            }
+        });
+    }
 
-	/**
-	 * TODO(developer): Uncomment the following lines to run the sample.
-	 */
-	const subscriptionName = projectInfo.pullSubName;
-	const timeout = 60;
+}).listen(8254);
+console.log('Server running at http://localhost:8254/');
 
-	// References an existing subscription
-	const subscription = pubsub.subscription(subscriptionName);
+function handleCommand(request,response){
+    console.log(request.body)
+    var result = {}
 
-	// Create an event handler to handle messages
-	let messageCount = 0;
-	var lastHystoryId = latestHistory;
-	const messageHandler = message => {
-			//console.log(message);
-		console.log(`Received message ${message.id}:`);
-		console.log(`\tData: ${message.data}`);
-		console.log(`\tAttributes: ${message.attributes}`);
-		var dataOBJ = JSON.parse(message.data)
-		var localEmail = dataOBJ.emailAddress
-		var historyId = dataOBJ.historyId
-		console.log(`\hID: ${historyId}`);
-		gmail.users.history.list({
-			userId:"me",
-			
-				startHistoryId:lastHystoryId == 0 ? historyId : lastHystoryId,
-
-			
-		}).then(res =>{
-			console.log(res.data)
-			//TODO:ERROR res.data.historyId
-			lastHystoryId = res.data.historyId;
-			if(res.data.history){
-				res.data.history.forEach(element => {
-					console.log("entering ")
-					if(element.messages){
-						console.log("mexs: ")
-						element.messages.forEach(el =>{
-							//console.log(el)
-							if(el.id){
-								var messageId = el.id
-								var threadId = el.threadId
-								//if in the history list there is a message id, get the message
-								//It is not needed to read the message, we just need the id to reply to it
-								gmail.users.messages.get({
-									userId:"me",
-									id:el.id
-								}).then(resMex => {
-									//console.log(resMex.data)
-									
-									if(resMex.data.labelIds.includes(optionD.unpaidID)){
-										console.log("Found Unpaid")
-										if(resMex.data.payload){
-											if(resMex.data.payload.headers){
-												var from
-												var to
-												var subject
-												resMex.data.payload.headers.forEach(head => {
-													//console.log(head)
-													if(head.name=="From"){
-														console.log("From: "+head.value)
-														from=head.value
-													}
-													if(head.name=="To"){
-														console.log("To: "+head.value)
-														to=head.value
-													}
-													if(head.name=="Subject"){
-														console.log("Subject: "+head.value)
-														subject=head.value
-													}
-												})
-												console.log(localEmail)
-												if(to.includes(localEmail)){
-													localDB.addMail(gmail,lightning,db,to,from,subject,messageId,threadId)
-												} else {
-													console.log("invalid receiver")
-												}
-											}
-											if(resMex.data.payload.parts){
-												resMex.data.payload.parts.forEach(part=>{
-													//console.log(part)
-												})
-
-											}
-										}
-									}
-									
-								})
-							}
-						})
-					}
-					if(element.messagesAdded){
-						console.log("mexs added: ")
-						element.messagesAdded.forEach(el =>{
-							//console.log(el)
-							
-						})
-					}
-				});
-			}
-		})
-		
-		messageCount += 1;
-
-		// "Ack" (acknowledge receipt of) the message
-		message.ack();
-	};
-
-	// Listen for new messages until timeout is hit
-	subscription.on(`message`, messageHandler);
-
-	localLND.listenInvoice(gmail,lightning,db,optionD)
-	console.log("mhhh")
-
-	setTimeout(() => {
-	subscription.removeListener('message', messageHandler);
-	console.log(`${messageCount} message(s) received.`);
-	}, timeout * 3000);
-}
-
-async function watchGmail(gmail){
-    const res = await gmail.users.watch({
-        userId: 'me',
-        requestBody: {
-          // Replace with `projects/${PROJECT_ID}/topics/${TOPIC_NAME}`
-          topicName: projectInfo.topicName
-        },
-        labelIds: [
-            "SENT"
-        ],
-        labelFilterAction:"include"
-      });
-      
-      console.log(res.data);
-}
-function stopWatch(gmail){
-    gmail.users.stop({
-        userId:'me'
-    })
+    switch(request.url){
+        case '/init':
+            var localGmail = require("./gmail.js")
+            if (request.method == 'POST') {
+                var body = '';
+        
+                request.on('data', function (data) {
+                    body += data;
+        
+                    // Too much POST data, kill the connection!
+                    // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+                    if (body.length > 1e6)
+                        request.connection.destroy();
+                });
+        
+                request.on('end', function () {
+                    // var post = qs.parse(body);
+                    result.result = "success"
+                    body = JSON.parse(body)
+                    console.log(body)
+                    if(body.code){
+                        console.log("starting i guess")
+                        localGmail.initGmail(body.code,(url,auth)=>{
+                            if(auth){
+                                result.result = "success"
+                                response.writeHead(200, { 'Content-Type':'text/html' });
+                                response.end(JSON.stringify(result), 'utf-8');
+                            }
+                        })
+                    } else {
+                        result.result = "error"
+                        response.writeHead(200, { 'Content-Type':'text/html' });
+                        response.end(JSON.stringify(result), 'utf-8');
+                    }
+                    // use post['blah'], etc.
+                });
+            } else{
+                localGmail.initGmail("",(url,auth)=>{
+                    if(url){
+                        console.log("hehe")
+                        result.response = "success"
+                        result.url = url
+                        response.writeHead(200, { 'Content-Type':'text/html' });
+                        response.end(JSON.stringify(result), 'utf-8');
+                    }
+                })
+            }
+            
+            
+            break
+        case '/check':
+            var localGmail = require("./gmail.js")
+            localGmail.checkToken(err=>{
+                if(err){
+                    result.result = "error"
+                    response.writeHead(200, { 'Content-Type':'text/html' });
+                    response.end(JSON.stringify(result), 'utf-8');
+                } else {
+                    result.result = "success"
+                    response.writeHead(200, { 'Content-Type':'text/html' });
+                    response.end(JSON.stringify(result), 'utf-8');
+                }
+            })
+            break
+        case '/status':
+            var cMail = require("./cMail.js")
+            result.status = cMail.getStatus()
+            result.result = "success"
+            response.writeHead(200, { 'Content-Type':'text/html' });
+            response.end(JSON.stringify(result), 'utf-8');
+            break
+        case '/start':
+                if (request.method == 'POST') {
+                    var body = '';
+            
+                    request.on('data', function (data) {
+                        body += data;
+            
+                        // Too much POST data, kill the connection!
+                        // 1e6 === 1 * Math.pow(10, 6) === 1 * 1000000 ~~~ 1MB
+                        if (body.length > 1e6)
+                            request.connection.destroy();
+                    });
+            
+                    request.on('end', function () {
+                        // var post = qs.parse(body);
+                        result.result = "success"
+                        body = JSON.parse(body)
+                        console.log(body)
+                        var localGmail = require("./gmail.js")
+                        localGmail.initGmail("",(url,auth)=>{
+                            if(auth){
+                                var cMail = require("./cMail.js")
+                                const {google} = require('googleapis');
+                                const gmail = google.gmail({version: 'v1', auth});
+                                cMail.startD(gmail,{
+                                    cost:body.cost,
+                                    message:body.message
+                                })
+                                result.result = "success"
+                                response.writeHead(200, { 'Content-Type':'text/html' });
+                                response.end(JSON.stringify(result), 'utf-8');
+                            }
+                        })
+                        
+                        // use post['blah'], etc.
+                    });
+                }
+            break
+        case '/stop':
+            result.result = "success"
+            response.writeHead(200, { 'Content-Type':'text/html' });
+            response.end(JSON.stringify(result), 'utf-8');
+            process.kill(process.pid, 'SIGTERM')
+            break
+        default:
+                response.writeHead(500);
+                result.result = "error"
+                result.error = "Sorry, thsi command is invalid"
+                response.end(JSON.stringify(result));
+                response.end();
+    }
 }

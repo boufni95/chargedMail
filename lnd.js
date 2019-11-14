@@ -20,21 +20,39 @@ module.exports.init=function(){
     })*/
     return lightning
 }
-module.exports.addInvoice=function(lightning,memo,fallbackAddr,value,callback){
-    console.log("creating invoice----------")
-    var request = {
-        memo:memo,
-        value:value,
-        fallback_addr:fallbackAddr,
 
-    }
-    lightning.addInvoice(request, function(err, response) {
+module.exports.addInvoice=function(lightning,memo,value,callback){
+
+    var request = { 
+        type: 0, 
+    } 
+    lightning.newAddress(request, function(err, response) {
         if(err){
             console.log(err)
+            return
         }
-        console.log(response);
-        callback(response)
+        //console.log(response);
+        var resAddr = response.address
+        //console.log(resAddr)
+        console.log("creating invoice----------")
+        var request = {
+            memo:memo,
+            value:value,
+            fallback_addr:resAddr
+
+        }
+        lightning.addInvoice(request, function(err, response) {
+            if(err){
+                console.log(err)
+                return
+            }
+            console.log(response);
+            response.fallback_addr = resAddr
+            callback(response)
+        })
     })
+
+    
 }
 
 module.exports.listenInvoice= function(gmail,lightning,db,optionD){
@@ -47,7 +65,10 @@ module.exports.listenInvoice= function(gmail,lightning,db,optionD){
 	call.on('data', function(response) {
 		// A response was received from the server.
         //console.log(response);
-        localDB.handlePayment(gmail,db,response.payment_request,"",response.r_preimage,response.amt_paid,optionD)
+        
+        if(response.settled){
+            localDB.handlePayment(gmail,db,response.payment_request,"",response.r_preimage,"",response.amt_paid,optionD)
+        }
         
 	});
 	call.on('status', function(status) {
@@ -56,4 +77,27 @@ module.exports.listenInvoice= function(gmail,lightning,db,optionD){
 	call.on('end', function() {
 		// The server has closed the stream.
 	});
+}
+module.exports.listenTransaction = function(gmail,lightning,db,optionD){
+    var localDB = require("./db.js")
+
+    var request = {} 
+    var call = lightning.subscribeTransactions(request)
+    call.on('data', function(response) {
+        // A response was received from the server.
+        //console.log(response);
+        console.log("got something on chain")
+        //console.log(response.amount)
+        //console.log(optionD.cost)
+        //console.log(response.num_confirmations)
+        if(response.amount >= optionD.cost && response.num_confirmations >= 1){
+            localDB.handlePayment(gmail,db,"",response.dest_addresses[0],"",response.tx_hash,response.amount,optionD)
+        }
+    });
+    call.on('status', function(status) {
+        // The current status of the stream.
+    });
+    call.on('end', function() {
+        // The server has closed the stream.
+    });
 }
